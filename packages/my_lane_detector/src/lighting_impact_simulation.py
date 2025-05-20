@@ -1,76 +1,68 @@
+#!/usr/bin/env python3
+import sys
+import os
 import cv2
 import numpy as np
-import os
-import sys
 
-# --- Configuration ---
-original_image_filename = 'Raw Camera Image_screenshot_07.05.2025.png'
-original_image_path = original_image_filename
+# Image file with spaces
+image_filename = 'Raw Camera Image_screenshot_07.05.2025.png'
+script_dir = os.path.dirname(os.path.abspath(__file__))
+image_path = os.path.join(script_dir, image_filename)
 
-lower_yellow_hsv = np.array([20, 100, 100])
-upper_yellow_hsv = np.array([40, 255, 255])
+# Load original image
+img = cv2.imread(image_path, cv2.IMREAD_COLOR)
+if img is None:
+    print(f"Error: Could not load image from {image_path}")
+    sys.exit(1)
 
-# Parameters for simulating lighting changes (Experiment with these)
-alpha_bright = 1.5  # Factor for brightness/contrast (>1 for brighter)
-beta_bright = 15    # Offset for brightness (positive for brighter)
+print("Successfully loaded image.")
 
-alpha_dark = 0.6    # Factor for brightness/contrast (<1 for darker)
-beta_dark = 0       # Offset for brightness (can be negative too, but alpha is usually enough)
-# ----------------------
+# Crop bottom half
+height, width, _ = img.shape
+crop_img = img[int(height / 2):, :]
 
-def apply_yellow_detection(image, lower_hsv, upper_hsv):
-    """Converts image to HSV, applies color thresholding for yellow, returns the mask."""
-    hsv_img = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    yellow_mask = cv2.inRange(hsv_img, lower_hsv, upper_hsv)
-    return yellow_mask
+# Simulate darker and brighter images
+darker = (crop_img * 0.5).astype(np.uint8)
+brighter = cv2.convertScaleAbs(crop_img, alpha=1.5, beta=30)
 
-def main():
-    # Check if the original image file exists
-    if not os.path.exists(original_image_path):
-        print(f"Error: Original image file not found at {original_image_path}")
-        sys.exit(1)
+# Define fixed HSV range for yellow detection
+lower_yellow_hsv = np.array([15, 80, 80])
+upper_yellow_hsv = np.array([45, 255, 255])
 
-    # Load the original color image
-    original_img = cv2.imread(original_image_path)
-    if original_img is None:
-        print(f"Error: Could not load original image from {original_image_path}")
-        sys.exit(1)
+# Function to apply yellow mask and Hough transform
+def detect_yellow_and_lines(image):
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, lower_yellow_hsv, upper_yellow_hsv)
+    result = cv2.bitwise_and(image, image, mask=mask)
 
-    print(f"Successfully loaded image: {original_image_path}")
+    # Optional: convert to grayscale for Hough
+    gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 100, 200)
 
-    # --- Simulate Different Lighting Conditions ---
-    img_brighter = cv2.convertScaleAbs(original_img, alpha=alpha_bright, beta=beta_bright)
-    img_darker = cv2.convertScaleAbs(original_img, alpha=alpha_dark, beta=beta_dark)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=30, minLineLength=40, maxLineGap=10)
+    output = image.copy()
+    if lines is not None:
+        for l in lines:
+            x1, y1, x2, y2 = l[0]
+            cv2.line(output, (x1, y1), (x2, y2), (0, 255, 255), 2)
+    return output
 
-    cv2.imshow('Simulated Brighter Image', img_brighter)
-    cv2.imshow('Simulated Darker Image', img_darker)
+# Apply on dark and bright images
+output_dark = detect_yellow_and_lines(darker)
+output_bright = detect_yellow_and_lines(brighter)
 
+# Show all results
+try:
+    while True:
+        cv2.imshow("Original Cropped", crop_img)
+        cv2.imshow("Darkened + Lane Detection", output_dark)
+        cv2.imshow("Brightened + Lane Detection", output_bright)
 
-    # --- Apply Yellow Detection (Using Fixed BEST Parameters) to ALL Images ---
-
-    print("\nApplying yellow detection with fixed parameters to all images...")
-
-    # Detection on Original Image
-    mask_original = apply_yellow_detection(original_img, lower_yellow_hsv, upper_yellow_hsv)
-    result_original = cv2.bitwise_and(original_img, original_img, mask=mask_original)
-    cv2.imshow('Yellow Detection (Original Light)', result_original) # Or just show mask_original
-
-    # Detection on Brighter Simulated Image
-    mask_brighter = apply_yellow_detection(img_brighter, lower_yellow_hsv, upper_yellow_hsv)
-    result_brighter = cv2.bitwise_and(img_brighter, img_brighter, mask=mask_brighter)
-    cv2.imshow('Yellow Detection (Brighter Light)', result_brighter) # Or just show mask_brighter
-
-
-    # Detection on Darker Simulated Image
-    mask_darker = apply_yellow_detection(img_darker, lower_yellow_hsv, upper_yellow_hsv)
-    result_darker = cv2.bitwise_and(img_darker, img_darker, mask=mask_darker)
-    cv2.imshow('Yellow Detection (Darker Light)', result_darker) # Or just show mask_darker
-
-
-    print("\nDisplaying results. Press any key on one of the image windows to close them.")
-    cv2.waitKey(0) # Wait indefinitely until a key is pressed
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
+except KeyboardInterrupt:
+    pass
+finally:
     cv2.destroyAllWindows()
     print("Windows closed.")
-
-if __name__ == '__main__':
-    main()
