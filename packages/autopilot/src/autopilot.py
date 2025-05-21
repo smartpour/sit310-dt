@@ -62,7 +62,7 @@ class Autopilot:
         # Process AprilTag info and publish a velocity
         for detection in detections:
             rospy.loginfo(f"Detected AprilTag with ID: {detection.tag_id}")
-            if detection.tag_id == 32:  # Assuming tag ID 32 is the stop sign
+            if detection.tag_id == 33:  # Assuming tag ID 32 is the stop sign
                 distance_to_tag = detection.transform.translation.z
                 rospy.loginfo(f"Distance to AprilTag (ID 32): {distance_to_tag} meters")
                 if distance_to_tag <= self.stop_sign_distance_threshold:
